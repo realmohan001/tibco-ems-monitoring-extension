@@ -57,9 +57,14 @@ public class QueueMetricCollector extends AbstractMetricCollector {
             } else {
                 for (QueueInfo queueInfo : queueInfos) {
                     if (shouldMonitorDestination(queueInfo.getName(), includePatterns, showSystem, showTemp, TibcoEMSMetricFetcher.DestinationType.QUEUE, logger)) {
-                        logger.info("Publishing metrics for queue " + queueInfo.getName());
-                        List<com.appdynamics.extensions.metrics.Metric> queueInfoMetrics = getQueueInfo(queueInfo, metrics);
-                        collectedMetrics.addAll(queueInfoMetrics);
+                    	
+                    	if(isActiveDestination(queueInfo))
+                        {
+                    		logger.info("Publishing metrics for queue " + queueInfo.getName());
+                    		 List<com.appdynamics.extensions.metrics.Metric> queueInfoMetrics = getQueueInfo(queueInfo, metrics);
+                             collectedMetrics.addAll(queueInfoMetrics);
+                        }
+                       
                     }
                 }
             }
@@ -71,7 +76,18 @@ public class QueueMetricCollector extends AbstractMetricCollector {
         }
     }
 
-    private List<com.appdynamics.extensions.metrics.Metric> getQueueInfo(QueueInfo queueInfo, Metrics metrics) {
+    private boolean isActiveDestination(QueueInfo queueInfo) {
+		// TODO Auto-generated method stub
+    	
+    	if(queueInfo!=null && (queueInfo.getOutboundStatistics().getTotalBytes() >0 || queueInfo.getInboundStatistics().getTotalBytes() > 0 || queueInfo.getReceiverCount()>0 || queueInfo.getPendingMessageCount() >0) )
+    	{
+    		return true;
+    	}
+    	
+		return false;
+	}
+
+	private List<com.appdynamics.extensions.metrics.Metric> getQueueInfo(QueueInfo queueInfo, Metrics metrics) {
 
         List<com.appdynamics.extensions.metrics.Metric> collectedMetrics = new ArrayList<>();
 

@@ -27,8 +27,10 @@ import com.appdynamics.extensions.util.CryptoUtils;
 import com.google.common.base.Strings;
 import com.google.common.collect.Maps;
 import com.tibco.tibjms.TibjmsSSL;
+import com.tibco.tibjms.admin.ServerInfo;
 import com.tibco.tibjms.admin.TibjmsAdmin;
 import com.tibco.tibjms.admin.TibjmsAdminException;
+import com.tibco.tibjms.naming.TibjmsContext;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +40,8 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Phaser;
 import java.util.regex.Pattern;
+
+import javax.naming.Context;
 
 /**
  * @author Satish Muddam, Kevin Mcmanus
@@ -115,7 +119,7 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
 
         String emsURL = String.format("%s://%s:%s", protocol, host, port);
         if (faultTolerantServers != null && faultTolerantServers.size() > 0) {
-            emsURL = addFaultTolerantURLs(emsURL, faultTolerantServers);
+            emsURL = addFaultTolerantURLs(emsURL, faultTolerantServers, protocol);
         }
 
         String plainPassword = getPassword(password, encryptedPassword, encryptionKey);
@@ -123,6 +127,9 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
         Hashtable sslParams = new Hashtable();
 
         if (protocol.equals("ssl")) {
+        	
+        	logger.info("Inside ssl protocol");
+        	
             String sslIdentityFile = (String) emsServer.get("sslIdentityFile");
             String sslIdentityPassword = (String) emsServer.get("sslIdentityPassword");
             String sslIdentityEncryptedPassword = (String) emsServer.get("sslIdentityEncryptedPassword");
@@ -165,17 +172,37 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
             if (!Strings.isNullOrEmpty(sslVerifyHostName)) {
                 sslParams.put(TibjmsSSL.ENABLE_VERIFY_HOST_NAME, sslVerifyHostName);
             }
+            
+            sslParams.put(Context.SECURITY_PRINCIPAL, user);
+            sslParams.put(Context.SECURITY_CREDENTIALS, (plainPassword==null || plainPassword.trim().length()==0) ? plainPassword : "");
+            
+            sslParams.put(TibjmsContext.SECURITY_PROTOCOL, "ssl");
+            sslParams.put(TibjmsContext.SSL_ENABLE_VERIFY_HOST, new Boolean("false"));
+            sslParams.put(TibjmsContext.SSL_ENABLE_VERIFY_HOST_NAME, new Boolean("false"));
         }
+        
+        logger.info("emsURL: "+ emsURL);
+        logger.info("user: "+ user);
+       // logger.info("plainPassword: "+ plainPassword);
+        
+        StringBuilder mapAsString = new StringBuilder("{");
+        for (Object key : sslParams.keySet()) {
+            mapAsString.append(key + "=" + sslParams.get(key) + ", ");
+        }
+        mapAsString.delete(mapAsString.length()-2, mapAsString.length()).append("}");
+        
+        //logger.info("sslParams: "+ mapAsString.toString());
+        
 
         collectMetrics(emsURL, user, plainPassword, sslParams, displayName);
 
     }
 
-    private String addFaultTolerantURLs(String emsURL, List<String> faultTolerantServers) {
+    private String addFaultTolerantURLs(String emsURL, List<String> faultTolerantServers, String protocol) {
         StringBuilder sb = new StringBuilder(emsURL);
         for (String faultTolerantServer : faultTolerantServers) {
             if (!Strings.isNullOrEmpty(faultTolerantServer)) {
-                sb.append(",").append(faultTolerantServer);
+                sb.append(",").append(protocol).append("://").append(faultTolerantServer);
             }
         }
         return sb.toString();
@@ -232,12 +259,15 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
         }
 
         TibjmsAdmin tibjmsAdmin = createConnection(emsURL, user, plainPassword, sslParams, displayName);
-
-        if (tibjmsAdmin == null) { //Could not get connection
+        
+       if (tibjmsAdmin == null) { //Could not get connection
             return;
         }
 
         try {
+        	
+        	
+        	
             Phaser phaser = new Phaser();
 
             //Register for this task
@@ -316,14 +346,27 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
     private TibjmsAdmin createConnection(String emsURL, String user, String plainPassword, Hashtable sslParams, String displayName) {
         TibjmsAdmin tibjmsAdmin = null;
         try {
-            logger.debug(String.format("Connecting to %s as %s", emsURL, user));
+            logger.info(String.format("Connecting to %s as %s", emsURL, user));
             tibjmsAdmin = new TibjmsAdmin(emsURL, user, plainPassword, sslParams);
+            
+            //krishna, if not active, try the secondary URL
+            if(tibjmsAdmin!=null && tibjmsAdmin.getInfo().getState() != ServerInfo.SERVER_ACTIVE)
+            {
+            	if(emsURL!=null && emsURL.indexOf(",")>=0)
+                {
+            		String myPrimaryURL = emsURL.substring(0,emsURL.indexOf(","));
+            		String mySecondaryURL = emsURL.substring(emsURL.indexOf(",")+1,emsURL.length());
+            		
+            		tibjmsAdmin = createConnection(mySecondaryURL, user, plainPassword, sslParams, displayName);
+                }
+            }
 
         } catch (TibjmsAdminException e) {
             logger.error("Error while connecting to Tibco EMS server [ " + displayName + " ]", e);
         } catch (Exception e) {
             logger.error("Unknown Error while connecting to Tibco EMS server [ " + displayName + " ]", e);
         }
+        
         return tibjmsAdmin;
     }
 

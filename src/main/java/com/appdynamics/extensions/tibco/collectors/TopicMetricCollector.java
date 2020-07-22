@@ -13,6 +13,7 @@ import com.appdynamics.extensions.tibco.TibcoEMSMetricFetcher;
 import com.appdynamics.extensions.tibco.metrics.Metric;
 import com.appdynamics.extensions.tibco.metrics.Metrics;
 import com.google.common.base.Strings;
+import com.tibco.tibjms.admin.QueueInfo;
 import com.tibco.tibjms.admin.TibjmsAdmin;
 import com.tibco.tibjms.admin.TibjmsAdminException;
 import com.tibco.tibjms.admin.TopicInfo;
@@ -55,9 +56,12 @@ public class TopicMetricCollector extends AbstractMetricCollector {
             } else {
                 for (TopicInfo topicInfo : topicInfos) {
                     if (shouldMonitorDestination(topicInfo.getName(), includePatterns, showSystem, showTemp, TibcoEMSMetricFetcher.DestinationType.TOPIC, logger)) {
-                        logger.info("Publishing metrics for topic " + topicInfo.getName());
-                        List<com.appdynamics.extensions.metrics.Metric> topicInfoMetrics = getTopicInfo(topicInfo, metrics);
-                        collectedMetrics.addAll(topicInfoMetrics);
+                    	if(isActiveDestination(topicInfo))
+                    	{
+	                        logger.info("Publishing metrics for topic " + topicInfo.getName());
+	                        List<com.appdynamics.extensions.metrics.Metric> topicInfoMetrics = getTopicInfo(topicInfo, metrics);
+	                        collectedMetrics.addAll(topicInfoMetrics);
+                    	}
                     }
                 }
             }
@@ -68,6 +72,17 @@ public class TopicMetricCollector extends AbstractMetricCollector {
             phaser.arriveAndDeregister();
         }
     }
+    
+    private boolean isActiveDestination(TopicInfo topicInfo) {
+  		// TODO Auto-generated method stubs
+      	
+      	if(topicInfo!=null && (topicInfo.getOutboundStatistics().getTotalBytes() >0  || topicInfo.getInboundStatistics().getTotalBytes() >0 || topicInfo.getConsumerCount()>0 || topicInfo.getPendingMessageCount() >0  || topicInfo.getSubscriptionCount() >0) )
+      	{
+      		return true;
+      	}
+      	
+  		return false;
+  	}
 
     private List<com.appdynamics.extensions.metrics.Metric> getTopicInfo(TopicInfo topicInfo, Metrics metrics) {
 
