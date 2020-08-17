@@ -352,7 +352,7 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
             //krishna, if not active, try the secondary URL
             if(tibjmsAdmin!=null && tibjmsAdmin.getInfo().getState() != ServerInfo.SERVER_ACTIVE)
             {
-            	//close the connectin to standby
+            	//close the connecting to standby
             	tibjmsAdmin.close();
             	
             	if(emsURL!=null && emsURL.indexOf(",")>=0)
@@ -362,6 +362,11 @@ public class TibcoEMSMetricFetcher implements AMonitorTaskRunnable {
             		
             		tibjmsAdmin = createConnection(mySecondaryURL, user, plainPassword, sslParams, displayName);
                 }
+            	else
+            	{
+            		//return null if it is not fault-tolarant URL
+            		tibjmsAdmin=null;
+            	}
             }
 
         } catch (TibjmsAdminException e) {
